@@ -1,6 +1,6 @@
-// Replace config with yours from Firebase Console > Project Settings
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCaczz6Esz1GZSd3WUvHySI_-C8XgjTYBs',
@@ -12,4 +12,21 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+const db = getFirestore(app);
+const messaging = getMessaging(app);
+
+export async function requestFirebaseNotificationPermission() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      const token = await getToken(messaging, {
+        vapidKey: 'BMiClGJNEq_lGJij4QnvWReia-Ys-AhCXrlzQPeT8zfKFaoW3GgSdBZNVxcvDifSHewtDtm6E6ELcQBmlWwLxC0',
+      });
+      return token;
+    }
+  } catch (err) {
+    console.error('Unable to get permission', err);
+  }
+}
+
+export { db, messaging, onMessage };

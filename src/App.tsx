@@ -5,8 +5,22 @@ import { Toaster } from '@/components/ui/sonner';
 import ModeToggle from '@/components/ui/mode-toggle';
 import { motion } from 'framer-motion';
 import { InstallPrompt } from './components/install-prompt';
+import { useEffect } from 'react';
+import { messaging, onMessage, requestFirebaseNotificationPermission } from './firebase';
+import { toast } from 'sonner';
 
 function App() {
+  useEffect(() => {
+    requestFirebaseNotificationPermission();
+
+    onMessage(messaging, (payload) => {
+      console.log('Message received. ', payload);
+      toast(payload.notification?.title ?? 'Notification', {
+        description: payload.notification?.body,
+      });
+    });
+  }, []);
+
   return (
     <ThemeProvider defaultTheme='system' storageKey='vite-ui-theme'>
       <Toaster />
