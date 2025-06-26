@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
+import { CalendarIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 import { parseISO, format, differenceInDays } from 'date-fns';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +12,16 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const reminderSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  date: z.string().min(1, 'Date is required'),
+});
+
+type ReminderFormData = z.infer<typeof reminderSchema>;
 
 interface Reminder {
   id?: string;
@@ -17,9 +31,18 @@ interface Reminder {
 
 export default function ReminderApp() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    reset,
+    watch,
+    formState: { errors },
+  } = useForm<ReminderFormData>({
+    resolver: zodResolver(reminderSchema),
+  });
 
   const reminderRef = collection(db, 'reminders');
 
@@ -51,24 +74,16 @@ export default function ReminderApp() {
     });
   }, [reminders]);
 
-  const handleSubmit = async () => {
-    if (!title.trim() || !date) {
-      toast.error('Please enter title and date');
-      return;
-    }
-
-    const reminder = { title: title.trim(), date };
-
+  const onSubmit = async (data: ReminderFormData) => {
     try {
       if (editingId) {
         const docRef = doc(db, 'reminders', editingId);
-        await updateDoc(docRef, reminder);
+        await updateDoc(docRef, data);
         setEditingId(null);
       } else {
-        await addDoc(reminderRef, reminder);
+        await addDoc(reminderRef, data);
       }
-      setTitle('');
-      setDate('');
+      reset();
       fetchReminders();
     } catch (error) {
       console.error('Error saving reminder:', error);
@@ -77,8 +92,8 @@ export default function ReminderApp() {
   };
 
   const handleEdit = (r: Reminder) => {
-    setTitle(r.title);
-    setDate(r.date);
+    setValue('title', r.title);
+    setValue('date', r.date);
     setEditingId(r.id || null);
   };
 
@@ -95,25 +110,49 @@ export default function ReminderApp() {
 
   return (
     <div className='max-w-2xl mx-auto space-y-8'>
-      {/* Input Card */}
       <div className='rounded-2xl border bg-background/60 shadow-xl p-6 backdrop-blur-md'>
         <h2 className='text-2xl font-bold tracking-tight mb-6 text-foreground'>{editingId ? 'Edit Reminder' : 'Create a Reminder'}</h2>
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+        <form onSubmit={handleSubmit(onSubmit)} className='grid grid-cols-1 md:grid-cols-2 gap-6'>
           <div className='space-y-2'>
             <Label htmlFor='title'>Title</Label>
-            <Input id='title' placeholder='e.g. Finish client report' value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input id='title' placeholder='e.g. Finish client report' {...register('title')} />
+            {errors.title && <p className='text-sm text-red-500'>{errors.title.message}</p>}
           </div>
           <div className='space-y-2'>
             <Label htmlFor='date'>Due Date</Label>
-            <Input id='date' type='date' value={date} onChange={(e) => setDate(e.target.value)} />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant='outline'
+                  className={cn('w-full justify-start text-left font-normal', !watch('date') && 'text-muted-foreground')}
+                >
+                  <CalendarIcon className='mr-2 h-4 w-4' />
+                  {watch('date') ? format(parseISO(watch('date')), 'PPP') : 'Pick a date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className='w-auto p-0'>
+                <Calendar
+                  mode='single'
+                  selected={watch('date') ? parseISO(watch('date')) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      setValue('date', date.toISOString().split('T')[0]);
+                    }
+                  }}
+                  captionLayout='dropdown'
+                />
+              </PopoverContent>
+            </Popover>
+            {errors.date && <p className='text-sm text-red-500'>{errors.date.message}</p>}
           </div>
-        </div>
-        <Button onClick={handleSubmit} className='w-full bg-primary hover:bg-primary/90 transition-colors shadow-md mt-8'>
-          {editingId ? 'Update Reminder' : 'Add Reminder'}
-        </Button>
+          <div className='md:col-span-2'>
+            <Button type='submit' className='w-full bg-primary hover:bg-primary/90 transition-colors shadow-md mt-4'>
+              {editingId ? 'Update Reminder' : 'Add Reminder'}
+            </Button>
+          </div>
+        </form>
       </div>
 
-      {/* Reminder Cards */}
       <div className='grid gap-6'>
         {reminders.length === 0 && <p className='text-muted-foreground text-center text-sm'>No reminders yet.</p>}
 
@@ -126,14 +165,13 @@ export default function ReminderApp() {
           >
             <Card className='border hover:shadow-xl transition-shadow'>
               <CardContent>
-                <h3 className='text-lg font-semibold'>{r.title}</h3>
+                <h3 className='text-lg font-semibold pt-8'>{r.title}</h3>
                 <p className='text-sm text-muted-foreground'>Due: {format(parseISO(r.date), 'PPP')}</p>
               </CardContent>
               <CardFooter className='flex gap-2 justify-end'>
                 <Button variant='outline' size='sm' className='hover:border-primary text-primary transition' onClick={() => handleEdit(r)}>
                   Edit
                 </Button>
-
                 <Button variant='destructive' size='sm' className='hover:bg-red-600 transition' onClick={() => handleDelete(r.id)}>
                   Delete
                 </Button>
